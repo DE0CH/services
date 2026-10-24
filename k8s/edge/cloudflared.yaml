@@ -1,0 +1,48 @@
+# The services' way in: the remotely managed tunnel `services` (infra/cloudflare.py): search.deyaochen.com → transcript
+# search, behind the Access app "Transcript search". Its token: the Secret tunnel-token (infra/secrets.py tunnel).
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: cloudflared, namespace: services }
+spec:
+  replicas: 2
+  minReadySeconds: 5
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: cloudflared } }
+  template:
+    metadata: { labels: { app: cloudflared }, annotations: { services/secrets-rev-tunnel: "" } }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector: { jarvis4/pool: services }
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+          args: [tunnel, --no-autoupdate, --metrics, "0.0.0.0:2000", --grace-period, 30s, run]
+          readinessProbe: { httpGet: { path: /ready, port: 2000 }, periodSeconds: 2, failureThreshold: 1 }
+          livenessProbe: { httpGet: { path: /ready, port: 2000 }, initialDelaySeconds: 30, periodSeconds: 10, failureThreshold: 6 }
+          env: [{ name: TUNNEL_TOKEN, valueFrom: { secretKeyRef: { name: tunnel-token, key: token } } }]
+          resources: { requests: { cpu: 20m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } }
+          securityContext: { runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] }, seccompProfile: { type: RuntimeDefault } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: cloudflared, namespace: services }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app: cloudflared } }
+---
+# cloudflared reaches only DNS, transcript search and Cloudflare's edge; nothing reaches it
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: cloudflared, namespace: services }
+spec:
+  podSelector: { matchLabels: { app: cloudflared } }
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }, podSelector: { matchLabels: { k8s-app: kube-dns } } }]
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+    - to: [{ podSelector: { matchLabels: { app: search } } }]
+      ports: [{ port: 8090 }]
+    - to: [{ ipBlock: { cidr: 0.0.0.0/0, except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16] } }]
+      ports: [{ port: 7844, protocol: UDP }, { port: 7844, protocol: TCP }, { port: 443, protocol: TCP }]

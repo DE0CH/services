@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcript search</title>
+<!-- Deyao's page for the service (lib/server.js serves it at /; Cloudflare Access in front). Plain JS, no build. -->
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --dim: #6b6b6b; --card: #f5f5f4; --line: #e3e3e0; --accent: #2563eb; --hit: #fff4c2; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #18181b; --fg: #ececec; --dim: #9a9a9a; --card: #232326; --line: #333338; --accent: #60a5fa; --hit: #4a3f12; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 4px 0 12px; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  input[type=search] { flex: 1 1 260px; min-width: 0; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+  select, button { padding: 9px 12px; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .meta { color: var(--dim); font-size: 13px; margin: 6px 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .card h2 { font-size: 15px; margin: 0 0 4px; overflow-wrap: anywhere; }
+  .tag { display: inline-block; font-size: 12px; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-right: 4px; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .chunk.hit { background: var(--hit); }
+  a { color: var(--accent); cursor: pointer; }
+  .err { color: #dc2626; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Transcript search</h1>
+  <form id="f">
+    <input type="search" id="q" placeholder="What did a past session do…" autofocus>
+    <select id="kind"><option value="">all kinds</option><option value="msg">said</option><option value="tool">did</option><option value="doc">records</option></select>
+    <select id="group"><option value="0">passages</option><option value="1">sessions</option></select>
+    <button class="primary">Search</button>
+  </form>
+  <div id="meta" class="meta"></div>
+  <div id="out"></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tags = (h) => `<span class="tag">${esc(h.kind || "")}</span><span class="tag">${esc(h.state)}</span><span class="tag">${esc((h.date || "").slice(0, 10))}</span>`;
+async function get(path) {
+  const r = await fetch(path, { credentials: "same-origin" });
+  const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+  if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+  return j;
+}
+function hitCard(h) {
+  return `<div class="card"><h2>${esc(h.title)}</h2>${tags(h)}<pre>${esc(h.snippet)}</pre><a data-ctx="${h.id}">Read around it</a></div>`;
+}
+async function search(e) {
+  e && e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  history.replaceState(null, "", "?" + new URLSearchParams({ q, kind: $("kind").value, group: $("group").value }));
+  $("meta").textContent = "Searching…"; $("out").innerHTML = "";
+  try {
+    const p = new URLSearchParams({ q, limit: "30", group: $("group").value === "1" ? "1" : "0" });
+    if ($("kind").value) p.set("kind", $("kind").value);
+    const r = await get("search?" + p);
+    $("meta").textContent = `${r.total} results in ${r.tookMs} ms${r.reranked ? ", reranked" : ""}${(r.notes || []).map((n) => " · " + n).join("")}`;
+    $("out").innerHTML = r.sessions
+      ? r.sessions.map((s) => `<div class="card"><h2>${esc(s.title)}</h2><span class="tag">${esc(s.state)}</span><span class="tag">${esc((s.date || "").slice(0, 10))}</span><span class="tag">${s.count} hits</span>${s.hits.slice(0, 2).map((h) => `<pre>${esc(h.snippet)}</pre><a data-ctx="${h.id}">Read around it</a>`).join("")}</div>`).join("")
+      : (r.hits || []).map(hitCard).join("");
+  } catch (err) { $("meta").innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+}
+async function context(id) {
+  $("meta").textContent = "Loading…"; $("out").innerHTML = "";
+  try {
+    const c = await get("context?" + new URLSearchParams({ id, before: "8", after: "8" }));
+    $("meta").innerHTML = `<a id="back">Back to results</a> · ${esc(c.session ? c.session.title : c.file)}`;
+    $("back").onclick = () => search();
+    $("out").innerHTML = c.chunks.map((k) => `<div class="card chunk${k.hit ? " hit" : ""}"><span class="tag">${esc(k.kind)}</span><span class="tag">${esc(k.ts || "")}</span><pre>${esc(k.text)}</pre></div>`).join("");
+    const hit = document.querySelector(".chunk.hit"); hit && hit.scrollIntoView({ block: "center" });
+  } catch (err) { $("meta").innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+}
+$("f").onsubmit = search;
+$("out").onclick = (e) => { const id = e.target.dataset && e.target.dataset.ctx; if (id) context(id); };
+const u = new URLSearchParams(location.search);
+if (u.get("q")) { $("q").value = u.get("q"); $("kind").value = u.get("kind") || ""; $("group").value = u.get("group") || "0"; search(); }
+</script>
+</body>
+</html>

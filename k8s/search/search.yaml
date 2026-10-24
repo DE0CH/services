@@ -33,7 +33,7 @@ spec:
   strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
   selector: { matchLabels: { app: search } }
   template:
-    metadata: { labels: { app: search }, annotations: { services/secrets-rev-search: "" } }
+    metadata: { labels: { app: search }, annotations: { services/secrets-rev-search: "61bce688e768" } }
     spec:
       serviceAccountName: search
       automountServiceAccountToken: true  # only to read its own pod's restarts (Role search-self below)

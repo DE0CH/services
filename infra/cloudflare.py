@@ -53,7 +53,7 @@ def service_token(name, vals, idkey, secretkey):
 def access_app(name, domain, policies):
     app = next((a for a in call("GET", f"/accounts/{ACCOUNT}/access/apps") if a.get("name") == name), None)
     body = {"name": name, "domain": domain, "type": "self_hosted", "session_duration": "720h",
-            "app_launcher_visible": False, "auto_redirect_to_identity": True}
+            "app_launcher_visible": False, "auto_redirect_to_identity": False}
     app = call("PUT" if app else "POST", f"/accounts/{ACCOUNT}/access/apps" + (f"/{app['id']}" if app else ""), body)
     for p in call("GET", f"/accounts/{ACCOUNT}/access/apps/{app['id']}/policies"):
         call("DELETE", f"/accounts/{ACCOUNT}/access/apps/{app['id']}/policies/{p['id']}")

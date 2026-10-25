@@ -9,7 +9,7 @@ spec:
   strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
   selector: { matchLabels: { app: cloudflared } }
   template:
-    metadata: { labels: { app: cloudflared }, annotations: { services/secrets-rev-tunnel: "3a854e111304" } }
+    metadata: { labels: { app: cloudflared }, annotations: { services/secrets-rev-tunnel: "1e76083257ad" } }
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false

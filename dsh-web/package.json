@@ -1,0 +1,6 @@
+{
+  "name": "dsh-web",
+  "private": true,
+  "description": "The persistent web UI of Jarvis 4 dsh sessions (see lib/server.js)",
+  "scripts": { "start": "node lib/server.js", "test": "node --test test/*.test.js" }
+}

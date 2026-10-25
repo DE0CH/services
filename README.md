@@ -25,11 +25,22 @@ API (all GET unless noted; JSON):
 - `/status` — index size, the last crawl and its error, replicas, memory.
 - `POST /reindex` (`?full=1` rebuilds; embeddings are cached by text hash) — a crawl now instead of within 5 min.
 
+## dsh web UI (`dsh-web/`, `k8s/dsh-web/`)
+
+The persistent web UI of Jarvis 4's `dsh` sessions (DeepSeek Harness from DE0CH/deepseek-harness, DE0CH/jarvis4
+`session-image/base/harness-dsh.sh`): **https://dsh.deyaochen.com/s/<session id>/**, behind the Access app "DeepSeek
+Harness" (Deyao's email). A stateless Node proxy, two replicas: it forwards the page, the API, the plugin scripts and the
+WebSocket to the session's own origin `https://<session id>-s.deyaochen.com/` with the Access service token `dsh-web`
+(`DSH_WEB_ACCESS_ID/SECRET`, Secret dsh-web-secrets), keeps redirects and dsh's cookie under `/s/<id>/`, serves the UI's
+versioned static files from its own cache, and answers a paused or gone session with a page that says so.
+
 ## Setup
 
 - `infra/cloudflare.py OUT` — tunnel, Access app, service token, DNS (idempotent; `CF_JARVIS2_INFRA_TOKEN`,
   `CLOUDFLARE_API`).
-- `infra/secrets.py search STORAGEBOX_HOST STORAGEBOX_USER STORAGEBOX_PASSWORD OPENROUTER_API` and
-  `infra/secrets.py tunnel token=env:TUNNEL_TOKEN` — the Secrets, SOPS-encrypted to the cluster's age key
+- `infra/secrets.py search STORAGEBOX_HOST STORAGEBOX_USER STORAGEBOX_PASSWORD OPENROUTER_API`,
+  `infra/secrets.py tunnel token=env:TUNNEL_TOKEN` and
+  `infra/secrets.py dsh-web CF_ACCESS_CLIENT_ID=env:DSH_WEB_ACCESS_ID CF_ACCESS_CLIENT_SECRET=env:DSH_WEB_ACCESS_SECRET` — the Secrets, SOPS-encrypted to the cluster's age key
   (`keys/cluster-age.pub`).
-- `.github/workflows/search.yml` builds and pins the image; the GHCR package `services-search` is public.
+- `.github/workflows/search.yml` and `dsh-web.yml` build and pin the images; the GHCR packages `services-search` and
+  `services-dsh-web` are public.

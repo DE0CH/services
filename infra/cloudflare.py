@@ -8,11 +8,15 @@
   infra/cloudflare.py OUT
       Access first, then the tunnel, DNS last:
         search.deyaochen.com → transcript search (http://search.services.svc.cluster.local:8090)
+        dsh.deyaochen.com    → the persistent dsh web UI (http://dsh-web.services.svc.cluster.local:8095)
       The service token transcript-search (sessions' CLI) is kept unless ROTATE=1; a newly minted one's values go to OUT
-      (mode 600) as SEARCH_ACCESS_ID/SECRET, with the tunnel's TUNNEL_TOKEN.
+      (mode 600) as SEARCH_ACCESS_ID/SECRET, with the tunnel's TUNNEL_TOKEN. Likewise the service token dsh-web (the dsh web
+      UI's way into the sessions' own origins <id>-s.deyaochen.com, whose Access admits any service token of the account)
+      as DSH_WEB_ACCESS_ID/SECRET.
 
 Access apps:
   "Transcript search"  search.deyaochen.com  Deyao's email (the page at /), or the service token transcript-search
+  "DeepSeek Harness"   dsh.deyaochen.com     Deyao's email
 """
 import json, os, sys, urllib.request, urllib.error
 
@@ -22,6 +26,8 @@ EMAIL = "chendeyao000@gmail.com"
 TUNNEL = "services"
 SEARCH_HOST = "search.deyaochen.com"
 SEARCH_ORIGIN = "http://search.services.svc.cluster.local:8090"
+DSH_HOST = "dsh.deyaochen.com"
+DSH_ORIGIN = "http://dsh-web.services.svc.cluster.local:8095"
 API = "https://api.cloudflare.com/client/v4"
 
 
@@ -71,19 +77,25 @@ def main():
         {"name": "Deyao", "decision": "allow", "include": [{"email": {"email": EMAIL}}]},
         {"name": "sessions (scripts/transcript-search.py)", "decision": "non_identity",
          "include": [{"service_token": {"token_id": tok["id"]}}]}])
+    dtok = service_token("dsh-web", vals, "DSH_WEB_ACCESS_ID", "DSH_WEB_ACCESS_SECRET")
+    daud = access_app("DeepSeek Harness", DSH_HOST, [
+        {"name": "Deyao", "decision": "allow", "include": [{"email": {"email": EMAIL}}]}])
     tunnels = call("GET", f"/accounts/{ACCOUNT}/cfd_tunnel?name={TUNNEL}&is_deleted=false")
     tun = tunnels[0] if tunnels else call("POST", f"/accounts/{ACCOUNT}/cfd_tunnel", {"name": TUNNEL, "config_src": "cloudflare"})
     call("PUT", f"/accounts/{ACCOUNT}/cfd_tunnel/{tun['id']}/configurations", {"config": {"ingress": [
-        {"hostname": SEARCH_HOST, "service": SEARCH_ORIGIN}, {"service": "http_status:404"}]}})
+        {"hostname": SEARCH_HOST, "service": SEARCH_ORIGIN}, {"hostname": DSH_HOST, "service": DSH_ORIGIN},
+        {"service": "http_status:404"}]}})
     vals["TUNNEL_TOKEN"] = call("GET", f"/accounts/{ACCOUNT}/cfd_tunnel/{tun['id']}/token")
-    rec = {"type": "CNAME", "name": SEARCH_HOST, "content": f"{tun['id']}.cfargotunnel.com", "proxied": True,
-           "comment": "tunnel services (DE0CH/services)"}
-    recs = call("GET", f"/zones/{ZONE}/dns_records?name={SEARCH_HOST}")
-    call("PUT" if recs else "POST", f"/zones/{ZONE}/dns_records" + (f"/{recs[0]['id']}" if recs else ""), rec)
+    for host in (SEARCH_HOST, DSH_HOST):
+        rec = {"type": "CNAME", "name": host, "content": f"{tun['id']}.cfargotunnel.com", "proxied": True,
+               "comment": "tunnel services (DE0CH/services)"}
+        recs = call("GET", f"/zones/{ZONE}/dns_records?name={host}")
+        call("PUT" if recs else "POST", f"/zones/{ZONE}/dns_records" + (f"/{recs[0]['id']}" if recs else ""), rec)
     fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.writelines(f"{k}={v}\n" for k, v in vals.items())
-    print(f"ok: tunnel {TUNNEL} {tun['id']}: https://{SEARCH_HOST}/ behind Access (aud {aud}, client id {tok['client_id']}); "
+    print(f"ok: tunnel {TUNNEL} {tun['id']}: https://{SEARCH_HOST}/ behind Access (aud {aud}, client id {tok['client_id']}), "
+          f"https://{DSH_HOST}/ behind Access (aud {daud}; dsh-web token {dtok['client_id']}); "
           f"new values ({', '.join(sorted(vals))}) in {out}")
 
 

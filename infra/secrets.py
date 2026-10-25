@@ -9,6 +9,8 @@ the old values back). The part's pod gets its annotation bumped so it restarts w
 (default `env:KEY`) or `file:PATH`.
   search   search.enc.yaml, Secret search-secrets — STORAGEBOX_HOST/USER/PASSWORD, OPENROUTER_API
   tunnel   tunnel.enc.yaml, Secret tunnel-token — token=env:TUNNEL_TOKEN (infra/cloudflare.py)
+  dsh-web  dsh-web.enc.yaml, Secret dsh-web-secrets — CF_ACCESS_CLIENT_ID=env:DSH_WEB_ACCESS_ID,
+           CF_ACCESS_CLIENT_SECRET=env:DSH_WEB_ACCESS_SECRET (infra/cloudflare.py)
 Prints names only, never a value."""
 import hashlib, json, os, re, subprocess, sys, tempfile
 
@@ -17,6 +19,7 @@ NS = "services"
 PARTS = {  # part → (file, Secret name, manifest under k8s/ whose pod restarts, annotation)
     "search": ("search.enc.yaml", "search-secrets", "search/search.yaml", "services/secrets-rev-search"),
     "tunnel": ("tunnel.enc.yaml", "tunnel-token", "edge/cloudflared.yaml", "services/secrets-rev-tunnel"),
+    "dsh-web": ("dsh-web.enc.yaml", "dsh-web-secrets", "dsh-web/dsh-web.yaml", "services/secrets-rev-dsh-web"),
 }
 
 

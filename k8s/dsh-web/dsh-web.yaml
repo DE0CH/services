@@ -1,0 +1,62 @@
+# The persistent web UI of Jarvis 4's dsh sessions (dsh-web/): https://dsh.deyaochen.com/s/<session id>/ through the
+# tunnel `services`, behind the Access app "DeepSeek Harness" (infra/cloudflare.py). Stateless: two replicas, rolling
+# with none unavailable. It reaches the sessions' own origins (<id>-s.deyaochen.com) with the Access service token
+# dsh-web (Secret dsh-web-secrets, infra/secrets.py dsh-web).
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: dsh-web, namespace: services }
+spec:
+  replicas: 2
+  minReadySeconds: 5
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: dsh-web } }
+  template:
+    metadata: { labels: { app: dsh-web }, annotations: { services/secrets-rev-dsh-web: "e36cee82490b" } }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector: { jarvis4/pool: services }
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: dsh-web
+          image: ghcr.io/de0ch/services-dsh-web:sha-000000000000
+          ports: [{ containerPort: 8095 }]
+          env:
+            - { name: PORT, value: "8095" }
+            - { name: CACHE_BYTES, value: "50331648" }  # 48 MiB of the UI's static files, under the 128 Mi limit
+            - { name: DRAIN_MS, value: "6000" }  # > readiness period × failureThreshold
+          envFrom: [{ secretRef: { name: dsh-web-secrets } }]
+          livenessProbe: { httpGet: { path: /healthz, port: 8095 }, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8095 }, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 2 }
+          resources: { requests: { cpu: 20m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+          securityContext: { runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] }, seccompProfile: { type: RuntimeDefault } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: dsh-web, namespace: services }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app: dsh-web } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: dsh-web, namespace: services }
+spec:
+  selector: { app: dsh-web }
+  ports: [{ port: 8095, targetPort: 8095 }]
+---
+# in: only cloudflared; out: DNS and HTTPS to Cloudflare (the session origins)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: dsh-web, namespace: services }
+spec:
+  podSelector: { matchLabels: { app: dsh-web } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { app: cloudflared } } }]
+      ports: [{ port: 8095 }]
+  egress:
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }, podSelector: { matchLabels: { k8s-app: kube-dns } } }]
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+    - to: [{ ipBlock: { cidr: 0.0.0.0/0, except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16] } }]
+      ports: [{ port: 443, protocol: TCP }]

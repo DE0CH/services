@@ -16,7 +16,7 @@
 
 Access apps:
   "Transcript search"  search.deyaochen.com  Deyao's email (the page at /), or the service token transcript-search
-  "DeepSeek Harness"   dsh.deyaochen.com     Deyao's email
+  "DeepSeek Harness"   dsh.deyaochen.com     Deyao's email, or the service token dsh-web (health checks)
 """
 import json, os, sys, urllib.request, urllib.error
 
@@ -79,7 +79,9 @@ def main():
          "include": [{"service_token": {"token_id": tok["id"]}}]}])
     dtok = service_token("dsh-web", vals, "DSH_WEB_ACCESS_ID", "DSH_WEB_ACCESS_SECRET")
     daud = access_app("DeepSeek Harness", DSH_HOST, [
-        {"name": "Deyao", "decision": "allow", "include": [{"email": {"email": EMAIL}}]}])
+        {"name": "Deyao", "decision": "allow", "include": [{"email": {"email": EMAIL}}]},
+        {"name": "checks with the dsh-web token (held by dsh-web itself)", "decision": "non_identity",
+         "include": [{"service_token": {"token_id": dtok["id"]}}]}])
     tunnels = call("GET", f"/accounts/{ACCOUNT}/cfd_tunnel?name={TUNNEL}&is_deleted=false")
     tun = tunnels[0] if tunnels else call("POST", f"/accounts/{ACCOUNT}/cfd_tunnel", {"name": TUNNEL, "config_src": "cloudflare"})
     call("PUT", f"/accounts/{ACCOUNT}/cfd_tunnel/{tun['id']}/configurations", {"config": {"ingress": [

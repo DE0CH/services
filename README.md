@@ -38,11 +38,12 @@ versioned static files from its own cache, and answers a paused or gone session 
 
 Deyao's Cloudflare account as code, so far its Access organisation: the one login page of every Access app of the
 account (name, Jarvis 4 icon, colours, header and footer). `cloudflare/tofu/*.tf` (OpenTofu, Cloudflare provider
-5.28.1) is applied by tofu-controller (DE0CH/jarvis4 `k8s/cluster/tofu-controller`) through the Terraform object
-`k8s/cloudflare/terraform.yaml`: on every push and every 30 minutes, which also reverts dashboard edits. Its token is
-`deyao-access-org` (Access Organizations Write+Read; `CF_ACCESS_ORG_TOKEN`, Secret cloudflare-api); state is the
-Secret `tfstate-default-cloudflare`. Plan locally with `TF_VAR_cloudflare_api_token=$CF_ACCESS_ORG_TOKEN tofu plan`
-in `cloudflare/tofu` (local state: an `import` block shows as "1 to import").
+5.28.1) is applied by the GitHub workflow `.github/workflows/cloudflare.yml` on every push touching it and every 30
+minutes, which also reverts dashboard edits. Secrets (Actions, from the store `infra`, set with `gh secret set` and
+`SERVICES_CI_SECRETS_TOKEN`): `CF_ACCESS_ORG_TOKEN` (token `deyao-access-org`, Access Organizations Write+Read) and
+`DEYAO_TOFU_R2_*` (token `deyao-tofu-state`). State: R2 bucket `deyao-tofu-state` on Deyao's account, key
+`services/cloudflare/terraform.tfstate`. Plan locally with the R2 key as `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` and
+`TF_VAR_cloudflare_api_token=$CF_ACCESS_ORG_TOKEN tofu plan` in `cloudflare/tofu`.
 
 ## Setup
 

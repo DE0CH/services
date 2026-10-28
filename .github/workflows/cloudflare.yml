@@ -1,0 +1,54 @@
+# Deyao's Cloudflare account as code (cloudflare/tofu: his Access login page): OpenTofu plans and applies on every push that
+# touches it, and every 30 minutes to revert dashboard edits.
+# State is in R2 on Deyao's account (backend in main.tf), locked with a lockfile, and runs never overlap (concurrency).
+# A failed run fails the commit's check; GitHub emails DE0CH.
+# Secrets: CF_ACCESS_ORG_TOKEN, DEYAO_TOFU_R2_ACCESS_KEY_ID/_SECRET_ACCESS_KEY (from the Jarvis 4 store `infra`).
+name: cloudflare
+on:
+  push:
+    branches: [main]
+    paths:
+      - cloudflare/tofu/**
+      - .github/workflows/cloudflare.yml
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: cloudflare
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cloudflare/tofu
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      AWS_ACCESS_KEY_ID: ${{ secrets.DEYAO_TOFU_R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.DEYAO_TOFU_R2_SECRET_ACCESS_KEY }}
+      TF_VAR_cloudflare_api_token: ${{ secrets.CF_ACCESS_ORG_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.6
+          tofu_wrapper: false
+      - run: tofu fmt -check -recursive
+      - run: tofu init -lockfile=readonly
+      - run: tofu validate
+      - name: plan
+        run: |
+          set +e
+          tofu plan -out=tfplan -detailed-exitcode -no-color > plan.txt 2>&1; code=$?
+          cat plan.txt; echo "code=$code" >> "$GITHUB_OUTPUT"
+        id: plan
+      - name: apply
+        if: steps.plan.outputs.code == '2'
+        run: tofu apply -no-color tfplan
+      - name: plan failed
+        if: steps.plan.outputs.code == '1'
+        run: exit 1

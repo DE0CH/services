@@ -34,6 +34,16 @@ WebSocket to the session's own origin `https://<session id>-s.deyaochen.com/` wi
 (`DSH_WEB_ACCESS_ID/SECRET`, Secret dsh-web-secrets), keeps redirects and dsh's cookie under `/s/<id>/`, serves the UI's
 versioned static files from its own cache, and answers a paused or gone session with a page that says so.
 
+## Cloudflare (tofu)
+
+Deyao's Cloudflare account as code, so far its Access organisation: the one login page of every Access app of the
+account (name, Jarvis 4 icon, colours, header and footer). `cloudflare/tofu/*.tf` (OpenTofu, Cloudflare provider
+5.28.1) is applied by tofu-controller (DE0CH/jarvis4 `k8s/cluster/tofu-controller`) through the Terraform object
+`k8s/cloudflare/terraform.yaml`: on every push and every 30 minutes, which also reverts dashboard edits. Its token is
+`deyao-access-org` (Access Organizations Write+Read; `CF_ACCESS_ORG_TOKEN`, Secret cloudflare-api); state is the
+Secret `tfstate-default-cloudflare`. Plan locally with `TF_VAR_cloudflare_api_token=$CF_ACCESS_ORG_TOKEN tofu plan`
+in `cloudflare/tofu` (local state: an `import` block shows as "1 to import").
+
 ## Setup
 
 - `infra/cloudflare.py OUT` — tunnel, Access app, service token, DNS (idempotent; `CF_JARVIS2_INFRA_TOKEN`,

@@ -1,0 +1,31 @@
+# The Access organisation: one login page for every Access app of the account (Cloudflare has no per-app login page).
+# Everything but login_design is as it was before this file existed.
+
+import {
+  to = cloudflare_zero_trust_organization.de0ch
+  id = local.account
+}
+
+resource "cloudflare_zero_trust_organization" "de0ch" {
+  account_id                                  = local.account
+  name                                        = "Deyao Chen"
+  auth_domain                                 = "de0ch.cloudflareaccess.com"
+  is_ui_read_only                             = false
+  strict_service_token_auth                   = false
+  allow_authenticate_via_warp                 = false
+  deny_unmatched_requests                     = false
+  auto_redirect_to_identity                   = false
+  deny_unmatched_requests_exempted_zone_names = []
+  # Cloudflare's own sign-in page, branded (Deyao, 2026-10-28): the Jarvis 4 icon (DE0CH/jarvis4 app/assets/icon.png at a
+  # pinned commit, so a later edit of the icon can't change this page unseen) on its own dark navy, white text
+  login_design = {
+    background_color = "#04090F"
+    text_color       = "#FFFFFF"
+    logo_path        = "https://raw.githubusercontent.com/DE0CH/jarvis4/a47aadde23fe8355b30e6ba44dd9376be86a3fbd/app/assets/icon.png"
+    header_text      = "Sign in to Deyao's apps"
+    footer_text      = "Private systems of Deyao Chen. Authorised users only."
+  }
+
+  # the API reports {enabled = false} and the provider can only send it with an action and a threshold: leave it as is
+  lifecycle { ignore_changes = [service_token_inactivity] }
+}

@@ -11,6 +11,8 @@ the old values back). The part's pod gets its annotation bumped so it restarts w
   tunnel   tunnel.enc.yaml, Secret tunnel-token — token=env:TUNNEL_TOKEN (infra/cloudflare.py)
   dsh-web  dsh-web.enc.yaml, Secret dsh-web-secrets — CF_ACCESS_CLIENT_ID=env:DSH_WEB_ACCESS_ID,
            CF_ACCESS_CLIENT_SECRET=env:DSH_WEB_ACCESS_SECRET (infra/cloudflare.py)
+  cloudflare  cloudflare.enc.yaml, Secret cloudflare-api — cloudflare_api_token=env:CF_ACCESS_ORG_TOKEN (the OpenTofu
+           runner reads it on each run, so no pod restarts)
 Prints names only, never a value."""
 import hashlib, json, os, re, subprocess, sys, tempfile
 
@@ -20,6 +22,7 @@ PARTS = {  # part → (file, Secret name, manifest under k8s/ whose pod restarts
     "search": ("search.enc.yaml", "search-secrets", "search/search.yaml", "services/secrets-rev-search"),
     "tunnel": ("tunnel.enc.yaml", "tunnel-token", "edge/cloudflared.yaml", "services/secrets-rev-tunnel"),
     "dsh-web": ("dsh-web.enc.yaml", "dsh-web-secrets", "dsh-web/dsh-web.yaml", "services/secrets-rev-dsh-web"),
+    "cloudflare": ("cloudflare.enc.yaml", "cloudflare-api", None, None),
 }
 
 
@@ -55,6 +58,9 @@ def main():
         os.unlink(t.name)
     out = os.path.join(ROOT, "k8s/secrets", fname)
     open(out, "w").write(enc)
+    if not manifest:
+        print(f"ok: k8s/secrets/{fname} ({', '.join(sorted(data))})")
+        return
     rev = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:12]
     mpath = os.path.join(ROOT, "k8s", manifest)
     m = open(mpath).read()

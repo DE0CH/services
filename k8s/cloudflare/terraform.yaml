@@ -1,0 +1,47 @@
+# Deyao's Cloudflare account as code (../../cloudflare/tofu, README "Cloudflare (tofu)"): tofu-controller (DE0CH/jarvis4
+# k8s/cluster/tofu-controller) plans and applies it on every commit and every 30 minutes (drift is reverted), in a
+# runner pod in this namespace with the only token it needs (Secret cloudflare-api, k8s/secrets/cloudflare.enc.yaml).
+apiVersion: infra.contrib.fluxcd.io/v1alpha2
+kind: Terraform
+metadata: { name: cloudflare, namespace: services }
+spec:
+  interval: 30m
+  retryInterval: 5m
+  path: ./cloudflare/tofu
+  sourceRef: { kind: GitRepository, name: services, namespace: flux-system }
+  approvePlan: auto
+  destroyResourcesOnDeletion: false   # deleting this object never deletes the Cloudflare setup
+  serviceAccountName: tf-runner
+  varsFrom:
+    - { kind: Secret, name: cloudflare-api }
+  runnerPodTemplate:
+    metadata:
+      labels: { app: tf-runner }
+    spec:
+      resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { cpu: "1", memory: 768Mi } }
+      securityContext:   # the namespace enforces the restricted Pod Security Standard
+        runAsNonRoot: true
+        runAsUser: 65532
+        allowPrivilegeEscalation: false
+        capabilities: { drop: [ALL] }
+        seccompProfile: { type: RuntimeDefault }
+---
+# the runner: in from the controller only (gRPC 30000), out to DNS, the internet (api.cloudflare.com, the OpenTofu
+# registry) and the Kubernetes API (its state Secret)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: tf-runner, namespace: services }
+spec:
+  podSelector: { matchLabels: { app: tf-runner } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: flux-system } }, podSelector: { matchLabels: { app.kubernetes.io/name: tofu-controller } } }]
+      ports: [{ port: 30000, protocol: TCP }]
+  egress:
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }, podSelector: { matchLabels: { k8s-app: kube-dns } } }]
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+    - to: [{ ipBlock: { cidr: 0.0.0.0/0, except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16] } }, { ipBlock: { cidr: "::/0", except: ["fc00::/7", "fe80::/10"] } }]
+      ports: [{ port: 443, protocol: TCP }]
+    - to: [{ ipBlock: { cidr: 10.43.0.1/32 } }]
+      ports: [{ port: 443, protocol: TCP }]
+    - ports: [{ port: 6443, protocol: TCP }]

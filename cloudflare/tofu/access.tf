@@ -25,7 +25,7 @@ resource "cloudflare_zero_trust_organization" "de0ch" {
     header_text      = "Sign in to Deyao's apps"
     footer_text      = "Private systems of Deyao Chen. Authorised users only."
   }
-
-  # the API reports {enabled = false} and the provider can only send it with an action and a threshold: leave it as is
-  lifecycle { ignore_changes = [service_token_inactivity] }
+  # off; a PUT must carry all three fields (Cloudflare 12062 "service_token_inactivity must include enabled,
+  # inactivity_threshold_days, and action"), so the two that don't apply while it is off are set too
+  service_token_inactivity = { enabled = false, action = "disable", inactivity_threshold_days = 90 }
 }
